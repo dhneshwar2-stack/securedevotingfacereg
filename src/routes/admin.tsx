@@ -237,6 +237,10 @@ function AdminPage() {
     if (error) toast.error(error.message);
   };
 
+  if (checkingAuth) {
+    return <div className="min-h-screen flex items-center justify-center text-muted-foreground">Loading…</div>;
+  }
+
   if (!authed) {
     return (
       <div className="min-h-screen flex items-center justify-center p-4">
@@ -244,24 +248,78 @@ function AdminPage() {
           <Link to="/" className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground">
             <ArrowLeft className="h-4 w-4" /> Back
           </Link>
-          <Card className="p-6 bg-gradient-card shadow-elegant">
-            <div className="flex items-center gap-3 mb-4">
+          <Card className="p-6 bg-gradient-card shadow-elegant space-y-4">
+            <div className="flex items-center gap-3">
               <div className="h-12 w-12 rounded-xl bg-gradient-hero flex items-center justify-center">
                 <ShieldCheck className="h-6 w-6 text-primary-foreground" />
               </div>
               <div>
                 <h1 className="text-2xl font-bold">Admin Login</h1>
-                <p className="text-sm text-muted-foreground">Manage candidates & view results</p>
+                <p className="text-sm text-muted-foreground">Authenticated access only</p>
               </div>
             </div>
-            <form onSubmit={handleLogin} className="space-y-3">
-              <div className="space-y-2">
-                <Label>Password</Label>
-                <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="admin123" />
-              </div>
-              <Button type="submit" className="w-full">Login</Button>
-              <p className="text-xs text-muted-foreground text-center">Default password: admin123</p>
-            </form>
+
+            <div className="grid grid-cols-2 gap-2 p-1 bg-muted rounded-lg">
+              <button
+                type="button"
+                onClick={() => { setAuthMode("password"); setOtpStep("request"); }}
+                className={`flex items-center justify-center gap-2 py-2 rounded-md text-sm font-medium transition ${authMode === "password" ? "bg-background shadow-sm" : "text-muted-foreground"}`}
+              >
+                <KeyRound className="h-4 w-4" /> Password
+              </button>
+              <button
+                type="button"
+                onClick={() => { setAuthMode("otp"); setOtpStep("request"); }}
+                className={`flex items-center justify-center gap-2 py-2 rounded-md text-sm font-medium transition ${authMode === "otp" ? "bg-background shadow-sm" : "text-muted-foreground"}`}
+              >
+                <Mail className="h-4 w-4" /> Email OTP
+              </button>
+            </div>
+
+            {authMode === "password" ? (
+              <form onSubmit={handlePasswordAuth} className="space-y-3">
+                <div className="space-y-2">
+                  <Label>Email</Label>
+                  <Input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder="admin@example.com" />
+                </div>
+                <div className="space-y-2">
+                  <Label>Password</Label>
+                  <Input type="password" required minLength={6} value={password} onChange={(e) => setPassword(e.target.value)} />
+                </div>
+                <Button type="submit" className="w-full" disabled={authLoading}>
+                  {authLoading ? "Please wait…" : isSignup ? "Create admin account" : "Login"}
+                </Button>
+                <button type="button" onClick={() => setIsSignup((s) => !s)} className="w-full text-xs text-muted-foreground hover:text-foreground">
+                  {isSignup ? "Have an account? Sign in" : "First time? Create account"}
+                </button>
+                <p className="text-[11px] text-muted-foreground text-center">
+                  The first registered account becomes admin.
+                </p>
+              </form>
+            ) : otpStep === "request" ? (
+              <form onSubmit={sendOtp} className="space-y-3">
+                <div className="space-y-2">
+                  <Label>Email</Label>
+                  <Input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder="admin@example.com" />
+                </div>
+                <Button type="submit" className="w-full" disabled={authLoading}>
+                  {authLoading ? "Sending…" : "Send OTP"}
+                </Button>
+              </form>
+            ) : (
+              <form onSubmit={verifyOtp} className="space-y-3">
+                <div className="space-y-2">
+                  <Label>Enter the 6-digit code sent to {email}</Label>
+                  <Input inputMode="numeric" required maxLength={6} value={otp} onChange={(e) => setOtp(e.target.value.replace(/\D/g, ""))} placeholder="123456" />
+                </div>
+                <Button type="submit" className="w-full" disabled={authLoading}>
+                  {authLoading ? "Verifying…" : "Verify & Login"}
+                </Button>
+                <button type="button" onClick={() => setOtpStep("request")} className="w-full text-xs text-muted-foreground hover:text-foreground">
+                  Use a different email
+                </button>
+              </form>
+            )}
           </Card>
         </div>
       </div>
