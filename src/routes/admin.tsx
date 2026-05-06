@@ -155,14 +155,63 @@ function AdminPage() {
     if (await updateSettings({ theme_primary: null, theme_accent: null })) toast.success("Theme reset");
   };
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handlePasswordAuth = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (password === ADMIN_PASSWORD) {
-      sessionStorage.setItem("admin", "1");
-      setAuthed(true);
-    } else {
-      toast.error("Wrong password");
+    setAuthLoading(true);
+    try {
+      if (isSignup) {
+        const { error } = await supabase.auth.signUp({
+          email,
+          password,
+          options: { emailRedirectTo: `${window.location.origin}/admin` },
+        });
+        if (error) throw error;
+        toast.success("Check your email to confirm your account");
+      } else {
+        const { error } = await supabase.auth.signInWithPassword({ email, password });
+        if (error) throw error;
+      }
+    } catch (err: any) {
+      toast.error(err.message ?? "Authentication failed");
+    } finally {
+      setAuthLoading(false);
     }
+  };
+
+  const sendOtp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAuthLoading(true);
+    try {
+      const { error } = await supabase.auth.signInWithOtp({
+        email,
+        options: { shouldCreateUser: true, emailRedirectTo: `${window.location.origin}/admin` },
+      });
+      if (error) throw error;
+      toast.success("OTP code sent to your email");
+      setOtpStep("verify");
+    } catch (err: any) {
+      toast.error(err.message ?? "Failed to send OTP");
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  const verifyOtp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAuthLoading(true);
+    try {
+      const { error } = await supabase.auth.verifyOtp({ email, token: otp, type: "email" });
+      if (error) throw error;
+    } catch (err: any) {
+      toast.error(err.message ?? "Invalid OTP");
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    navigate({ to: "/" });
   };
 
   const addCandidate = async (e: React.FormEvent) => {
