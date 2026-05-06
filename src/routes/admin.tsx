@@ -36,7 +36,14 @@ function AdminPage() {
   const navigate = useNavigate();
   const { settings, reload } = useSettings();
   const [authed, setAuthed] = useState(false);
+  const [checkingAuth, setCheckingAuth] = useState(true);
+  const [authMode, setAuthMode] = useState<"password" | "otp">("password");
+  const [otpStep, setOtpStep] = useState<"request" | "verify">("request");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [otp, setOtp] = useState("");
+  const [isSignup, setIsSignup] = useState(false);
+  const [authLoading, setAuthLoading] = useState(false);
   const [candidates, setCandidates] = useState<Candidate[]>([]);
   const [results, setResults] = useState<ResultRow[]>([]);
   const [totalVotes, setTotalVotes] = useState(0);
@@ -48,8 +55,34 @@ function AdminPage() {
   const [accent, setAccent] = useState("#a78bfa");
   const [durationMin, setDurationMin] = useState(60);
 
+  const checkAdmin = async (userId: string) => {
+    const { data } = await supabase
+      .from("user_roles")
+      .select("role")
+      .eq("user_id", userId)
+      .eq("role", "admin")
+      .maybeSingle();
+    return !!data;
+  };
+
   useEffect(() => {
-    if (sessionStorage.getItem("admin") === "1") setAuthed(true);
+    const { data: sub } = supabase.auth.onAuthStateChange(async (_e, session) => {
+      if (session?.user) {
+        const isAdmin = await checkAdmin(session.user.id);
+        setAuthed(isAdmin);
+        if (!isAdmin) toast.error("This account is not an admin");
+      } else {
+        setAuthed(false);
+      }
+      setCheckingAuth(false);
+    });
+    supabase.auth.getSession().then(async ({ data }) => {
+      if (data.session?.user) {
+        setAuthed(await checkAdmin(data.session.user.id));
+      }
+      setCheckingAuth(false);
+    });
+    return () => sub.subscription.unsubscribe();
   }, []);
 
   const loadData = async () => {
