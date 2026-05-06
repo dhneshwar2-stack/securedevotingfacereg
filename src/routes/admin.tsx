@@ -15,6 +15,22 @@ export const Route = createFileRoute("/admin")({
 
 const ADMIN_PASSWORD = "admin123";
 
+function hexToRgb(hex: string): [number, number, number] {
+  const m = hex.replace("#", "");
+  const v = m.length === 3 ? m.split("").map((c) => c + c).join("") : m;
+  return [parseInt(v.slice(0, 2), 16), parseInt(v.slice(2, 4), 16), parseInt(v.slice(4, 6), 16)];
+}
+function rgbToHex(r: number, g: number, b: number) {
+  const h = (n: number) => Math.max(0, Math.min(255, Math.round(n))).toString(16).padStart(2, "0");
+  return `#${h(r)}${h(g)}${h(b)}`;
+}
+// store theme tokens as oklch strings; use simple approximations via CSS color-mix is overkill.
+// We'll just store hex; faceapi-free: CSS variables accept any color.
+function hexToOklch(hex: string) { return hex; }
+function oklchToHexSafe(val: string, fallback: string) {
+  return val.startsWith("#") ? val : fallback;
+}
+
 interface Candidate { id: string; name: string; party: string; symbol_url: string | null }
 interface ResultRow { candidate: Candidate; votes: number }
 
