@@ -14,7 +14,102 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      candidates: {
+        Row: {
+          created_at: string
+          id: string
+          name: string
+          party: string
+          symbol_url: string | null
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          name: string
+          party: string
+          symbol_url?: string | null
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          name?: string
+          party?: string
+          symbol_url?: string | null
+        }
+        Relationships: []
+      }
+      voters: {
+        Row: {
+          age: number
+          created_at: string
+          face_descriptor: Json | null
+          gender: string
+          has_voted: boolean
+          id: string
+          name: string
+          photo_url: string | null
+          voter_id: string
+        }
+        Insert: {
+          age: number
+          created_at?: string
+          face_descriptor?: Json | null
+          gender: string
+          has_voted?: boolean
+          id?: string
+          name: string
+          photo_url?: string | null
+          voter_id: string
+        }
+        Update: {
+          age?: number
+          created_at?: string
+          face_descriptor?: Json | null
+          gender?: string
+          has_voted?: boolean
+          id?: string
+          name?: string
+          photo_url?: string | null
+          voter_id?: string
+        }
+        Relationships: []
+      }
+      votes: {
+        Row: {
+          candidate_id: string
+          created_at: string
+          id: string
+          voter_id: string
+        }
+        Insert: {
+          candidate_id: string
+          created_at?: string
+          id?: string
+          voter_id: string
+        }
+        Update: {
+          candidate_id?: string
+          created_at?: string
+          id?: string
+          voter_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "votes_candidate_id_fkey"
+            columns: ["candidate_id"]
+            isOneToOne: false
+            referencedRelation: "candidates"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "votes_voter_id_fkey"
+            columns: ["voter_id"]
+            isOneToOne: true
+            referencedRelation: "voters"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
