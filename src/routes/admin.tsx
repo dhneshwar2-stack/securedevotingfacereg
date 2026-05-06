@@ -20,6 +20,7 @@ interface ResultRow { candidate: Candidate; votes: number }
 
 function AdminPage() {
   const navigate = useNavigate();
+  const { settings, reload } = useSettings();
   const [authed, setAuthed] = useState(false);
   const [password, setPassword] = useState("");
   const [candidates, setCandidates] = useState<Candidate[]>([]);
@@ -27,6 +28,11 @@ function AdminPage() {
   const [totalVotes, setTotalVotes] = useState(0);
   const [newC, setNewC] = useState({ name: "", party: "" });
   const [symbolFile, setSymbolFile] = useState<File | null>(null);
+  const [startStr, setStartStr] = useState("");
+  const [endStr, setEndStr] = useState("");
+  const [primary, setPrimary] = useState("#6366f1");
+  const [accent, setAccent] = useState("#a78bfa");
+  const [durationMin, setDurationMin] = useState(60);
 
   useEffect(() => {
     if (sessionStorage.getItem("admin") === "1") setAuthed(true);
