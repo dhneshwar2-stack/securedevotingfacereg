@@ -208,6 +208,71 @@ function AdminPage() {
           <p className="text-muted-foreground">Total votes cast: <span className="font-semibold text-foreground">{totalVotes}</span></p>
         </div>
 
+        {(() => {
+          const st = votingStatus(settings);
+          const label = st.reason === "open" || st.reason === "no-window" ? "OPEN" : st.reason === "not-started" ? "SCHEDULED" : "CLOSED";
+          const cls = st.open ? "bg-success/15 text-success" : "bg-destructive/15 text-destructive";
+          return (
+            <Card className="p-6 bg-gradient-card shadow-elegant space-y-4">
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <h2 className="text-xl font-bold flex items-center gap-2"><Clock className="h-5 w-5" /> Voting Window</h2>
+                <span className={`text-xs font-bold px-2 py-1 rounded-full ${cls}`}>{label}</span>
+              </div>
+              <div className="grid gap-3 md:grid-cols-2">
+                <div className="space-y-2">
+                  <Label>Start</Label>
+                  <Input type="datetime-local" value={startStr} onChange={(e) => setStartStr(e.target.value)} />
+                </div>
+                <div className="space-y-2">
+                  <Label>End</Label>
+                  <Input type="datetime-local" value={endStr} onChange={(e) => setEndStr(e.target.value)} />
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button onClick={saveWindow}>Save window</Button>
+                <Button variant="outline" onClick={clearWindow}>Clear (always open)</Button>
+                <Button variant="destructive" onClick={closeNow}>Close voting now</Button>
+              </div>
+              <div className="flex items-end gap-2 pt-2 border-t border-border/50">
+                <div className="space-y-2">
+                  <Label>Quick start (minutes)</Label>
+                  <Input type="number" min={1} value={durationMin} onChange={(e) => setDurationMin(Math.max(1, Number(e.target.value) || 1))} className="w-32" />
+                </div>
+                <Button onClick={startNow}>Start voting now</Button>
+              </div>
+              {settings?.voting_end && (
+                <p className="text-xs text-muted-foreground">
+                  {st.open ? "Closes" : "Closed"} at {new Date(settings.voting_end).toLocaleString()}
+                </p>
+              )}
+            </Card>
+          );
+        })()}
+
+        <Card className="p-6 bg-gradient-card shadow-elegant space-y-4">
+          <h2 className="text-xl font-bold flex items-center gap-2"><Palette className="h-5 w-5" /> Theme Colors</h2>
+          <div className="grid gap-3 md:grid-cols-2">
+            <div className="space-y-2">
+              <Label>Primary</Label>
+              <div className="flex items-center gap-2">
+                <input type="color" value={primary} onChange={(e) => setPrimary(e.target.value)} className="h-10 w-14 rounded border border-border bg-background cursor-pointer" />
+                <Input value={primary} onChange={(e) => setPrimary(e.target.value)} />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label>Accent</Label>
+              <div className="flex items-center gap-2">
+                <input type="color" value={accent} onChange={(e) => setAccent(e.target.value)} className="h-10 w-14 rounded border border-border bg-background cursor-pointer" />
+                <Input value={accent} onChange={(e) => setAccent(e.target.value)} />
+              </div>
+            </div>
+          </div>
+          <div className="flex gap-2">
+            <Button onClick={saveTheme}>Apply theme</Button>
+            <Button variant="outline" onClick={resetTheme}>Reset to default</Button>
+          </div>
+        </Card>
+
         {winner && winner.votes > 0 && (
           <Card className="p-6 bg-gradient-hero text-primary-foreground shadow-glow flex items-center gap-4">
             <Trophy className="h-10 w-10" />
