@@ -38,6 +38,33 @@ export type Database = {
         }
         Relationships: []
       }
+      settings: {
+        Row: {
+          id: string
+          theme_accent: string | null
+          theme_primary: string | null
+          updated_at: string
+          voting_end: string | null
+          voting_start: string | null
+        }
+        Insert: {
+          id: string
+          theme_accent?: string | null
+          theme_primary?: string | null
+          updated_at?: string
+          voting_end?: string | null
+          voting_start?: string | null
+        }
+        Update: {
+          id?: string
+          theme_accent?: string | null
+          theme_primary?: string | null
+          updated_at?: string
+          voting_end?: string | null
+          voting_start?: string | null
+        }
+        Relationships: []
+      }
       voters: {
         Row: {
           age: number

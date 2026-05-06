@@ -6,7 +6,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
 import { toast } from "sonner";
-import { ArrowLeft, ShieldCheck, Trash2, Plus, Trophy } from "lucide-react";
+import { ArrowLeft, ShieldCheck, Trash2, Plus, Trophy, Clock, Palette } from "lucide-react";
+import { useSettings, votingStatus } from "@/lib/settings";
 
 export const Route = createFileRoute("/admin")({
   component: AdminPage,
@@ -14,11 +15,28 @@ export const Route = createFileRoute("/admin")({
 
 const ADMIN_PASSWORD = "admin123";
 
+function hexToRgb(hex: string): [number, number, number] {
+  const m = hex.replace("#", "");
+  const v = m.length === 3 ? m.split("").map((c) => c + c).join("") : m;
+  return [parseInt(v.slice(0, 2), 16), parseInt(v.slice(2, 4), 16), parseInt(v.slice(4, 6), 16)];
+}
+function rgbToHex(r: number, g: number, b: number) {
+  const h = (n: number) => Math.max(0, Math.min(255, Math.round(n))).toString(16).padStart(2, "0");
+  return `#${h(r)}${h(g)}${h(b)}`;
+}
+// store theme tokens as oklch strings; use simple approximations via CSS color-mix is overkill.
+// We'll just store hex; faceapi-free: CSS variables accept any color.
+function hexToOklch(hex: string) { return hex; }
+function oklchToHexSafe(val: string, fallback: string) {
+  return val.startsWith("#") ? val : fallback;
+}
+
 interface Candidate { id: string; name: string; party: string; symbol_url: string | null }
 interface ResultRow { candidate: Candidate; votes: number }
 
 function AdminPage() {
   const navigate = useNavigate();
+  const { settings, reload } = useSettings();
   const [authed, setAuthed] = useState(false);
   const [password, setPassword] = useState("");
   const [candidates, setCandidates] = useState<Candidate[]>([]);
@@ -26,6 +44,11 @@ function AdminPage() {
   const [totalVotes, setTotalVotes] = useState(0);
   const [newC, setNewC] = useState({ name: "", party: "" });
   const [symbolFile, setSymbolFile] = useState<File | null>(null);
+  const [startStr, setStartStr] = useState("");
+  const [endStr, setEndStr] = useState("");
+  const [primary, setPrimary] = useState("#6366f1");
+  const [accent, setAccent] = useState("#a78bfa");
+  const [durationMin, setDurationMin] = useState(60);
 
   useEffect(() => {
     if (sessionStorage.getItem("admin") === "1") setAuthed(true);
@@ -52,6 +75,54 @@ function AdminPage() {
       .subscribe();
     return () => { supabase.removeChannel(ch); };
   }, [authed]);
+
+  useEffect(() => {
+    if (!settings) return;
+    const toLocal = (iso: string | null) => {
+      if (!iso) return "";
+      const d = new Date(iso);
+      const off = d.getTimezoneOffset();
+      return new Date(d.getTime() - off * 60000).toISOString().slice(0, 16);
+    };
+    setStartStr(toLocal(settings.voting_start));
+    setEndStr(toLocal(settings.voting_end));
+    if (settings.theme_primary) setPrimary(oklchToHexSafe(settings.theme_primary, primary));
+    if (settings.theme_accent) setAccent(oklchToHexSafe(settings.theme_accent, accent));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [settings?.voting_start, settings?.voting_end, settings?.theme_primary, settings?.theme_accent]);
+
+  const updateSettings = async (patch: Record<string, any>) => {
+    const { error } = await supabase.from("settings").update({ ...patch, updated_at: new Date().toISOString() }).eq("id", "global");
+    if (error) { toast.error(error.message); return false; }
+    reload();
+    return true;
+  };
+
+  const saveWindow = async () => {
+    if (await updateSettings({
+      voting_start: startStr ? new Date(startStr).toISOString() : null,
+      voting_end: endStr ? new Date(endStr).toISOString() : null,
+    })) toast.success("Voting window saved");
+  };
+  const startNow = async () => {
+    const start = new Date();
+    const end = new Date(start.getTime() + durationMin * 60000);
+    if (await updateSettings({ voting_start: start.toISOString(), voting_end: end.toISOString() }))
+      toast.success(`Voting open for ${durationMin} min`);
+  };
+  const closeNow = async () => {
+    if (await updateSettings({ voting_end: new Date().toISOString() })) toast.success("Voting closed");
+  };
+  const clearWindow = async () => {
+    if (await updateSettings({ voting_start: null, voting_end: null })) toast.success("Window cleared (always open)");
+  };
+  const saveTheme = async () => {
+    if (await updateSettings({ theme_primary: hexToOklch(primary), theme_accent: hexToOklch(accent) }))
+      toast.success("Theme updated");
+  };
+  const resetTheme = async () => {
+    if (await updateSettings({ theme_primary: null, theme_accent: null })) toast.success("Theme reset");
+  };
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
@@ -136,6 +207,71 @@ function AdminPage() {
           <h1 className="text-3xl font-bold">Admin Dashboard</h1>
           <p className="text-muted-foreground">Total votes cast: <span className="font-semibold text-foreground">{totalVotes}</span></p>
         </div>
+
+        {(() => {
+          const st = votingStatus(settings);
+          const label = st.reason === "open" || st.reason === "no-window" ? "OPEN" : st.reason === "not-started" ? "SCHEDULED" : "CLOSED";
+          const cls = st.open ? "bg-success/15 text-success" : "bg-destructive/15 text-destructive";
+          return (
+            <Card className="p-6 bg-gradient-card shadow-elegant space-y-4">
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <h2 className="text-xl font-bold flex items-center gap-2"><Clock className="h-5 w-5" /> Voting Window</h2>
+                <span className={`text-xs font-bold px-2 py-1 rounded-full ${cls}`}>{label}</span>
+              </div>
+              <div className="grid gap-3 md:grid-cols-2">
+                <div className="space-y-2">
+                  <Label>Start</Label>
+                  <Input type="datetime-local" value={startStr} onChange={(e) => setStartStr(e.target.value)} />
+                </div>
+                <div className="space-y-2">
+                  <Label>End</Label>
+                  <Input type="datetime-local" value={endStr} onChange={(e) => setEndStr(e.target.value)} />
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button onClick={saveWindow}>Save window</Button>
+                <Button variant="outline" onClick={clearWindow}>Clear (always open)</Button>
+                <Button variant="destructive" onClick={closeNow}>Close voting now</Button>
+              </div>
+              <div className="flex items-end gap-2 pt-2 border-t border-border/50">
+                <div className="space-y-2">
+                  <Label>Quick start (minutes)</Label>
+                  <Input type="number" min={1} value={durationMin} onChange={(e) => setDurationMin(Math.max(1, Number(e.target.value) || 1))} className="w-32" />
+                </div>
+                <Button onClick={startNow}>Start voting now</Button>
+              </div>
+              {settings?.voting_end && (
+                <p className="text-xs text-muted-foreground">
+                  {st.open ? "Closes" : "Closed"} at {new Date(settings.voting_end).toLocaleString()}
+                </p>
+              )}
+            </Card>
+          );
+        })()}
+
+        <Card className="p-6 bg-gradient-card shadow-elegant space-y-4">
+          <h2 className="text-xl font-bold flex items-center gap-2"><Palette className="h-5 w-5" /> Theme Colors</h2>
+          <div className="grid gap-3 md:grid-cols-2">
+            <div className="space-y-2">
+              <Label>Primary</Label>
+              <div className="flex items-center gap-2">
+                <input type="color" value={primary} onChange={(e) => setPrimary(e.target.value)} className="h-10 w-14 rounded border border-border bg-background cursor-pointer" />
+                <Input value={primary} onChange={(e) => setPrimary(e.target.value)} />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label>Accent</Label>
+              <div className="flex items-center gap-2">
+                <input type="color" value={accent} onChange={(e) => setAccent(e.target.value)} className="h-10 w-14 rounded border border-border bg-background cursor-pointer" />
+                <Input value={accent} onChange={(e) => setAccent(e.target.value)} />
+              </div>
+            </div>
+          </div>
+          <div className="flex gap-2">
+            <Button onClick={saveTheme}>Apply theme</Button>
+            <Button variant="outline" onClick={resetTheme}>Reset to default</Button>
+          </div>
+        </Card>
 
         {winner && winner.votes > 0 && (
           <Card className="p-6 bg-gradient-hero text-primary-foreground shadow-glow flex items-center gap-4">
