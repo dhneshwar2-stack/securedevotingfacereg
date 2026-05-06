@@ -60,6 +60,54 @@ function AdminPage() {
     return () => { supabase.removeChannel(ch); };
   }, [authed]);
 
+  useEffect(() => {
+    if (!settings) return;
+    const toLocal = (iso: string | null) => {
+      if (!iso) return "";
+      const d = new Date(iso);
+      const off = d.getTimezoneOffset();
+      return new Date(d.getTime() - off * 60000).toISOString().slice(0, 16);
+    };
+    setStartStr(toLocal(settings.voting_start));
+    setEndStr(toLocal(settings.voting_end));
+    if (settings.theme_primary) setPrimary(oklchToHexSafe(settings.theme_primary, primary));
+    if (settings.theme_accent) setAccent(oklchToHexSafe(settings.theme_accent, accent));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [settings?.voting_start, settings?.voting_end, settings?.theme_primary, settings?.theme_accent]);
+
+  const updateSettings = async (patch: Record<string, any>) => {
+    const { error } = await supabase.from("settings").update({ ...patch, updated_at: new Date().toISOString() }).eq("id", "global");
+    if (error) { toast.error(error.message); return false; }
+    reload();
+    return true;
+  };
+
+  const saveWindow = async () => {
+    if (await updateSettings({
+      voting_start: startStr ? new Date(startStr).toISOString() : null,
+      voting_end: endStr ? new Date(endStr).toISOString() : null,
+    })) toast.success("Voting window saved");
+  };
+  const startNow = async () => {
+    const start = new Date();
+    const end = new Date(start.getTime() + durationMin * 60000);
+    if (await updateSettings({ voting_start: start.toISOString(), voting_end: end.toISOString() }))
+      toast.success(`Voting open for ${durationMin} min`);
+  };
+  const closeNow = async () => {
+    if (await updateSettings({ voting_end: new Date().toISOString() })) toast.success("Voting closed");
+  };
+  const clearWindow = async () => {
+    if (await updateSettings({ voting_start: null, voting_end: null })) toast.success("Window cleared (always open)");
+  };
+  const saveTheme = async () => {
+    if (await updateSettings({ theme_primary: hexToOklch(primary), theme_accent: hexToOklch(accent) }))
+      toast.success("Theme updated");
+  };
+  const resetTheme = async () => {
+    if (await updateSettings({ theme_primary: null, theme_accent: null })) toast.success("Theme reset");
+  };
+
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
     if (password === ADMIN_PASSWORD) {
