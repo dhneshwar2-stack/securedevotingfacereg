@@ -6,14 +6,12 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
 import { toast } from "sonner";
-import { ArrowLeft, ShieldCheck, Trash2, Plus, Trophy, Clock, Palette } from "lucide-react";
+import { ArrowLeft, ShieldCheck, Trash2, Plus, Trophy, Clock, Palette, Mail, KeyRound } from "lucide-react";
 import { useSettings, votingStatus } from "@/lib/settings";
 
 export const Route = createFileRoute("/admin")({
   component: AdminPage,
 });
-
-const ADMIN_PASSWORD = "admin123";
 
 function hexToRgb(hex: string): [number, number, number] {
   const m = hex.replace("#", "");
@@ -38,7 +36,14 @@ function AdminPage() {
   const navigate = useNavigate();
   const { settings, reload } = useSettings();
   const [authed, setAuthed] = useState(false);
+  const [checkingAuth, setCheckingAuth] = useState(true);
+  const [authMode, setAuthMode] = useState<"password" | "otp">("password");
+  const [otpStep, setOtpStep] = useState<"request" | "verify">("request");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [otp, setOtp] = useState("");
+  const [isSignup, setIsSignup] = useState(false);
+  const [authLoading, setAuthLoading] = useState(false);
   const [candidates, setCandidates] = useState<Candidate[]>([]);
   const [results, setResults] = useState<ResultRow[]>([]);
   const [totalVotes, setTotalVotes] = useState(0);
@@ -50,8 +55,34 @@ function AdminPage() {
   const [accent, setAccent] = useState("#a78bfa");
   const [durationMin, setDurationMin] = useState(60);
 
+  const checkAdmin = async (userId: string) => {
+    const { data } = await supabase
+      .from("user_roles")
+      .select("role")
+      .eq("user_id", userId)
+      .eq("role", "admin")
+      .maybeSingle();
+    return !!data;
+  };
+
   useEffect(() => {
-    if (sessionStorage.getItem("admin") === "1") setAuthed(true);
+    const { data: sub } = supabase.auth.onAuthStateChange(async (_e, session) => {
+      if (session?.user) {
+        const isAdmin = await checkAdmin(session.user.id);
+        setAuthed(isAdmin);
+        if (!isAdmin) toast.error("This account is not an admin");
+      } else {
+        setAuthed(false);
+      }
+      setCheckingAuth(false);
+    });
+    supabase.auth.getSession().then(async ({ data }) => {
+      if (data.session?.user) {
+        setAuthed(await checkAdmin(data.session.user.id));
+      }
+      setCheckingAuth(false);
+    });
+    return () => sub.subscription.unsubscribe();
   }, []);
 
   const loadData = async () => {
@@ -124,14 +155,63 @@ function AdminPage() {
     if (await updateSettings({ theme_primary: null, theme_accent: null })) toast.success("Theme reset");
   };
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handlePasswordAuth = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (password === ADMIN_PASSWORD) {
-      sessionStorage.setItem("admin", "1");
-      setAuthed(true);
-    } else {
-      toast.error("Wrong password");
+    setAuthLoading(true);
+    try {
+      if (isSignup) {
+        const { error } = await supabase.auth.signUp({
+          email,
+          password,
+          options: { emailRedirectTo: `${window.location.origin}/admin` },
+        });
+        if (error) throw error;
+        toast.success("Check your email to confirm your account");
+      } else {
+        const { error } = await supabase.auth.signInWithPassword({ email, password });
+        if (error) throw error;
+      }
+    } catch (err: any) {
+      toast.error(err.message ?? "Authentication failed");
+    } finally {
+      setAuthLoading(false);
     }
+  };
+
+  const sendOtp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAuthLoading(true);
+    try {
+      const { error } = await supabase.auth.signInWithOtp({
+        email,
+        options: { shouldCreateUser: true, emailRedirectTo: `${window.location.origin}/admin` },
+      });
+      if (error) throw error;
+      toast.success("OTP code sent to your email");
+      setOtpStep("verify");
+    } catch (err: any) {
+      toast.error(err.message ?? "Failed to send OTP");
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  const verifyOtp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAuthLoading(true);
+    try {
+      const { error } = await supabase.auth.verifyOtp({ email, token: otp, type: "email" });
+      if (error) throw error;
+    } catch (err: any) {
+      toast.error(err.message ?? "Invalid OTP");
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    navigate({ to: "/" });
   };
 
   const addCandidate = async (e: React.FormEvent) => {
@@ -157,6 +237,10 @@ function AdminPage() {
     if (error) toast.error(error.message);
   };
 
+  if (checkingAuth) {
+    return <div className="min-h-screen flex items-center justify-center text-muted-foreground">Loading…</div>;
+  }
+
   if (!authed) {
     return (
       <div className="min-h-screen flex items-center justify-center p-4">
@@ -164,24 +248,78 @@ function AdminPage() {
           <Link to="/" className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground">
             <ArrowLeft className="h-4 w-4" /> Back
           </Link>
-          <Card className="p-6 bg-gradient-card shadow-elegant">
-            <div className="flex items-center gap-3 mb-4">
+          <Card className="p-6 bg-gradient-card shadow-elegant space-y-4">
+            <div className="flex items-center gap-3">
               <div className="h-12 w-12 rounded-xl bg-gradient-hero flex items-center justify-center">
                 <ShieldCheck className="h-6 w-6 text-primary-foreground" />
               </div>
               <div>
                 <h1 className="text-2xl font-bold">Admin Login</h1>
-                <p className="text-sm text-muted-foreground">Manage candidates & view results</p>
+                <p className="text-sm text-muted-foreground">Authenticated access only</p>
               </div>
             </div>
-            <form onSubmit={handleLogin} className="space-y-3">
-              <div className="space-y-2">
-                <Label>Password</Label>
-                <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="admin123" />
-              </div>
-              <Button type="submit" className="w-full">Login</Button>
-              <p className="text-xs text-muted-foreground text-center">Default password: admin123</p>
-            </form>
+
+            <div className="grid grid-cols-2 gap-2 p-1 bg-muted rounded-lg">
+              <button
+                type="button"
+                onClick={() => { setAuthMode("password"); setOtpStep("request"); }}
+                className={`flex items-center justify-center gap-2 py-2 rounded-md text-sm font-medium transition ${authMode === "password" ? "bg-background shadow-sm" : "text-muted-foreground"}`}
+              >
+                <KeyRound className="h-4 w-4" /> Password
+              </button>
+              <button
+                type="button"
+                onClick={() => { setAuthMode("otp"); setOtpStep("request"); }}
+                className={`flex items-center justify-center gap-2 py-2 rounded-md text-sm font-medium transition ${authMode === "otp" ? "bg-background shadow-sm" : "text-muted-foreground"}`}
+              >
+                <Mail className="h-4 w-4" /> Email OTP
+              </button>
+            </div>
+
+            {authMode === "password" ? (
+              <form onSubmit={handlePasswordAuth} className="space-y-3">
+                <div className="space-y-2">
+                  <Label>Email</Label>
+                  <Input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder="admin@example.com" />
+                </div>
+                <div className="space-y-2">
+                  <Label>Password</Label>
+                  <Input type="password" required minLength={6} value={password} onChange={(e) => setPassword(e.target.value)} />
+                </div>
+                <Button type="submit" className="w-full" disabled={authLoading}>
+                  {authLoading ? "Please wait…" : isSignup ? "Create admin account" : "Login"}
+                </Button>
+                <button type="button" onClick={() => setIsSignup((s) => !s)} className="w-full text-xs text-muted-foreground hover:text-foreground">
+                  {isSignup ? "Have an account? Sign in" : "First time? Create account"}
+                </button>
+                <p className="text-[11px] text-muted-foreground text-center">
+                  The first registered account becomes admin.
+                </p>
+              </form>
+            ) : otpStep === "request" ? (
+              <form onSubmit={sendOtp} className="space-y-3">
+                <div className="space-y-2">
+                  <Label>Email</Label>
+                  <Input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder="admin@example.com" />
+                </div>
+                <Button type="submit" className="w-full" disabled={authLoading}>
+                  {authLoading ? "Sending…" : "Send OTP"}
+                </Button>
+              </form>
+            ) : (
+              <form onSubmit={verifyOtp} className="space-y-3">
+                <div className="space-y-2">
+                  <Label>Enter the 6-digit code sent to {email}</Label>
+                  <Input inputMode="numeric" required maxLength={6} value={otp} onChange={(e) => setOtp(e.target.value.replace(/\D/g, ""))} placeholder="123456" />
+                </div>
+                <Button type="submit" className="w-full" disabled={authLoading}>
+                  {authLoading ? "Verifying…" : "Verify & Login"}
+                </Button>
+                <button type="button" onClick={() => setOtpStep("request")} className="w-full text-xs text-muted-foreground hover:text-foreground">
+                  Use a different email
+                </button>
+              </form>
+            )}
           </Card>
         </div>
       </div>
@@ -198,7 +336,7 @@ function AdminPage() {
           <Link to="/" className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground">
             <ArrowLeft className="h-4 w-4" /> Home
           </Link>
-          <Button variant="outline" size="sm" onClick={() => { sessionStorage.removeItem("admin"); navigate({ to: "/" }); }}>
+          <Button variant="outline" size="sm" onClick={handleLogout}>
             Logout
           </Button>
         </div>
