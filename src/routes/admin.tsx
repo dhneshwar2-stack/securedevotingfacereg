@@ -6,7 +6,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
 import { toast } from "sonner";
-import { ArrowLeft, ShieldCheck, Trash2, Plus, Trophy } from "lucide-react";
+import { ArrowLeft, ShieldCheck, Trash2, Plus, Trophy, Clock, Palette } from "lucide-react";
+import { useSettings, votingStatus } from "@/lib/settings";
 
 export const Route = createFileRoute("/admin")({
   component: AdminPage,
