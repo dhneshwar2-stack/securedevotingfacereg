@@ -1,10 +1,11 @@
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { toast } from "sonner";
-import { CheckCircle2, Vote } from "lucide-react";
+import { CheckCircle2, Vote, Clock, Lock } from "lucide-react";
+import { useSettings, votingStatus } from "@/lib/settings";
 
 export const Route = createFileRoute("/vote")({
   component: VotePage,
@@ -19,6 +20,8 @@ interface Candidate {
 
 function VotePage() {
   const navigate = useNavigate();
+  const { settings } = useSettings();
+  const status = votingStatus(settings);
   const [voter, setVoter] = useState<any>(null);
   const [candidates, setCandidates] = useState<Candidate[]>([]);
   const [submitting, setSubmitting] = useState<string | null>(null);
@@ -40,6 +43,10 @@ function VotePage() {
 
   const castVote = async (c: Candidate) => {
     if (!voter) return;
+    if (!status.open) {
+      toast.error("Voting is currently closed");
+      return;
+    }
     setSubmitting(c.id);
     const { error } = await supabase.from("votes").insert({
       voter_id: voter.id,
