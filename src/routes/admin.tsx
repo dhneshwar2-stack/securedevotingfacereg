@@ -40,7 +40,7 @@ function AdminPage() {
   const [authMode, setAuthMode] = useState<"password" | "otp">("password");
   const [otpStep, setOtpStep] = useState<"request" | "verify">("request");
   const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
+  const [password, setPassword] = useState("admin123");
   const [otp, setOtp] = useState("");
   const [isSignup, setIsSignup] = useState(false);
   const [authLoading, setAuthLoading] = useState(false);
@@ -293,7 +293,7 @@ function AdminPage() {
                   {isSignup ? "Have an account? Sign in" : "First time? Create account"}
                 </button>
                 <p className="text-[11px] text-muted-foreground text-center">
-                  The first registered account becomes admin.
+                  Default admin password: <span className="font-semibold">admin123</span>. The first registered account becomes admin.
                 </p>
               </form>
             ) : otpStep === "request" ? (
