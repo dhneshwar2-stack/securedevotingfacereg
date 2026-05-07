@@ -8,6 +8,6 @@ import { defineConfig } from "@lovable.dev/vite-tanstack-config";
 
 export default defineConfig({
     preview:{
-        allowedHosts: ['securedevotingfacereg-3.onrender,com'],
+        allowedHosts: ['securedevotingfacereg-3.onrender.com'],
     }
 });
