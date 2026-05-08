@@ -6,7 +6,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
 import { toast } from "sonner";
-import { ArrowLeft, ShieldCheck, Trash2, Plus, Trophy, Clock, Palette, Mail, KeyRound } from "lucide-react";
+import { ArrowLeft, ShieldCheck, Trash2, Plus, Trophy, Clock, Palette, Mail, KeyRound, Lock } from "lucide-react";
+
 import { useSettings, votingStatus } from "@/lib/settings";
 
 export const Route = createFileRoute("/admin")({
@@ -37,13 +38,19 @@ function AdminPage() {
   const { settings, reload } = useSettings();
   const [authed, setAuthed] = useState(false);
   const [checkingAuth, setCheckingAuth] = useState(true);
-  const [authMode, setAuthMode] = useState<"password" | "otp">("password");
+  const [authMode, setAuthMode] = useState<"password" | "otp">("otp");
   const [otpStep, setOtpStep] = useState<"request" | "verify">("request");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("admin123");
+  const [resetPassword, setResetPassword] = useState("");
+  const [resetConfirm, setResetConfirm] = useState("");
   const [otp, setOtp] = useState("");
   const [isSignup, setIsSignup] = useState(false);
+  const [forgotPasswordMode, setForgotPasswordMode] = useState(false);
+  const [isRecovery, setIsRecovery] = useState(false);
+  const [resetSent, setResetSent] = useState(false);
   const [authLoading, setAuthLoading] = useState(false);
+  const [resendLoading, setResendLoading] = useState(false);
   const [candidates, setCandidates] = useState<Candidate[]>([]);
   const [results, setResults] = useState<ResultRow[]>([]);
   const [totalVotes, setTotalVotes] = useState(0);
@@ -54,6 +61,11 @@ function AdminPage() {
   const [primary, setPrimary] = useState("#6366f1");
   const [accent, setAccent] = useState("#a78bfa");
   const [durationMin, setDurationMin] = useState(60);
+  const [changePassMode, setChangePassMode] = useState(false);
+  const [currentPass, setCurrentPass] = useState("");
+  const [newPass, setNewPass] = useState("");
+  const [confirmPass, setConfirmPass] = useState("");
+  const [changePassLoading, setChangePassLoading] = useState(false);
 
   const checkAdmin = async (userId: string) => {
     const { data } = await supabase
@@ -83,6 +95,31 @@ function AdminPage() {
       setCheckingAuth(false);
     });
     return () => sub.subscription.unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("type") === "recovery") {
+      setForgotPasswordMode(true);
+      setIsRecovery(true);
+      setAuthLoading(true);
+      (supabase.auth as any)
+        .getSessionFromUrl()
+        .then((result: any) => {
+          if (result?.error) {
+            toast.error("Unable to process password reset link.");
+            return;
+          }
+          if (!result?.data?.session) {
+            toast.error("Password reset session not found. Try the link again.");
+          }
+        })
+        .finally(() => {
+          setAuthLoading(false);
+          window.history.replaceState({}, document.title, window.location.pathname);
+        });
+    }
   }, []);
 
   const loadData = async () => {
@@ -160,13 +197,17 @@ function AdminPage() {
     setAuthLoading(true);
     try {
       if (isSignup) {
-        const { error } = await supabase.auth.signUp({
+        const { data, error } = await supabase.auth.signUp({
           email,
           password,
           options: { emailRedirectTo: `${window.location.origin}/admin` },
         });
         if (error) throw error;
-        toast.success("Check your email to confirm your account");
+        if (data?.session) {
+          toast.success("Admin account created and signed in successfully");
+        } else {
+          toast.success("Check your email to confirm your account. If it doesn't arrive, check your spam folder or Supabase SMTP settings.");
+        }
       } else {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
@@ -178,21 +219,117 @@ function AdminPage() {
     }
   };
 
+  const sendPasswordReset = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAuthLoading(true);
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: `${window.location.origin}/admin`,
+      });
+      if (error) throw error;
+      setResetSent(true);
+      toast.success("Password reset link sent. Check your inbox and follow the email instructions.");
+    } catch (err: any) {
+      toast.error(err.message ?? "Failed to send password reset email");
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  const updatePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (resetPassword !== resetConfirm) {
+      toast.error("Passwords do not match");
+      return;
+    }
+    setAuthLoading(true);
+    try {
+      const { error } = await supabase.auth.updateUser({ password: resetPassword });
+      if (error) throw error;
+      toast.success("Password updated successfully. You can now sign in with the new password.");
+      setForgotPasswordMode(false);
+      setIsRecovery(false);
+      setPassword("");
+      setResetPassword("");
+      setResetConfirm("");
+      setResetSent(false);
+    } catch (err: any) {
+      toast.error(err.message ?? "Password update failed");
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  const cancelForgotPassword = () => {
+    setForgotPasswordMode(false);
+    setIsRecovery(false);
+    setResetPassword("");
+    setResetConfirm("");
+    setResetSent(false);
+  };
+
+  const handleChangePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (newPass !== confirmPass) {
+      toast.error("New passwords do not match");
+      return;
+    }
+    if (newPass.length < 6) {
+      toast.error("New password must be at least 6 characters");
+      return;
+    }
+    setChangePassLoading(true);
+    try {
+      const { error } = await supabase.auth.updateUser({ password: newPass });
+      if (error) throw error;
+      toast.success("Password changed successfully");
+      setChangePassMode(false);
+      setCurrentPass("");
+      setNewPass("");
+      setConfirmPass("");
+    } catch (err: any) {
+      toast.error(err.message ?? "Failed to change password");
+    } finally {
+      setChangePassLoading(false);
+    }
+  };
+
   const sendOtp = async (e: React.FormEvent) => {
     e.preventDefault();
     setAuthLoading(true);
     try {
-      const { error } = await supabase.auth.signInWithOtp({
+      const { data, error } = await supabase.auth.signInWithOtp({
         email,
         options: { shouldCreateUser: true, emailRedirectTo: `${window.location.origin}/admin` },
       });
       if (error) throw error;
-      toast.success("OTP code sent to your email");
-      setOtpStep("verify");
+      if (data?.session) {
+        toast.success("OTP accepted and session created; you should be logged in shortly.");
+      } else {
+        toast.success("OTP code sent to your email. Use the 6-digit code in the next step.");
+        setOtpStep("verify");
+      }
     } catch (err: any) {
       toast.error(err.message ?? "Failed to send OTP");
     } finally {
       setAuthLoading(false);
+    }
+  };
+
+  const resendOtp = async () => {
+    setResendLoading(true);
+    try {
+      const { data, error } = await supabase.auth.signInWithOtp({
+        email,
+        options: { shouldCreateUser: true, emailRedirectTo: `${window.location.origin}/admin` },
+      });
+      if (error) throw error;
+      toast.success("OTP resent. Check your email or spam folder.");
+      if (!data?.session) setOtpStep("verify");
+    } catch (err: any) {
+      toast.error(err.message ?? "Failed to resend OTP");
+    } finally {
+      setResendLoading(false);
     }
   };
 
@@ -202,6 +339,7 @@ function AdminPage() {
     try {
       const { error } = await supabase.auth.verifyOtp({ email, token: otp, type: "email" });
       if (error) throw error;
+      toast.success("OTP verified — logging you in now.");
     } catch (err: any) {
       toast.error(err.message ?? "Invalid OTP");
     } finally {
@@ -275,8 +413,41 @@ function AdminPage() {
                 <Mail className="h-4 w-4" /> Email OTP
               </button>
             </div>
+            <p className="text-xs text-muted-foreground">
+              Use Email OTP to receive a one-time 6-digit code in your inbox for admin login.
+            </p>
 
-            {authMode === "password" ? (
+            {forgotPasswordMode ? (
+              <form onSubmit={isRecovery ? updatePassword : sendPasswordReset} className="space-y-3">
+                <div className="space-y-2">
+                  <Label>Email</Label>
+                  <Input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder="admin@example.com" />
+                </div>
+                {isRecovery ? (
+                  <>
+                    <div className="space-y-2">
+                      <Label>New password</Label>
+                      <Input type="password" required minLength={6} value={resetPassword} onChange={(e) => setResetPassword(e.target.value)} />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Confirm new password</Label>
+                      <Input type="password" required minLength={6} value={resetConfirm} onChange={(e) => setResetConfirm(e.target.value)} />
+                    </div>
+                  </>
+                ) : null}
+                <Button type="submit" className="w-full" disabled={authLoading}>
+                  {authLoading ? "Please wait…" : isRecovery ? "Update password" : "Send reset link"}
+                </Button>
+                {resetSent && !isRecovery ? (
+                  <p className="text-sm text-muted-foreground text-center">
+                    Password reset email sent. Open the link in your inbox to complete the reset.
+                  </p>
+                ) : null}
+                <button type="button" onClick={cancelForgotPassword} className="w-full text-xs text-muted-foreground hover:text-foreground">
+                  Return to login
+                </button>
+              </form>
+            ) : authMode === "password" ? (
               <form onSubmit={handlePasswordAuth} className="space-y-3">
                 <div className="space-y-2">
                   <Label>Email</Label>
@@ -289,6 +460,19 @@ function AdminPage() {
                 <Button type="submit" className="w-full" disabled={authLoading}>
                   {authLoading ? "Please wait…" : isSignup ? "Create admin account" : "Login"}
                 </Button>
+                {!isSignup && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setForgotPasswordMode(true);
+                      setIsRecovery(false);
+                      setResetSent(false);
+                    }}
+                    className="w-full text-xs text-muted-foreground hover:text-foreground"
+                  >
+                    Forgot password?
+                  </button>
+                )}
                 <button type="button" onClick={() => setIsSignup((s) => !s)} className="w-full text-xs text-muted-foreground hover:text-foreground">
                   {isSignup ? "Have an account? Sign in" : "First time? Create account"}
                 </button>
@@ -315,6 +499,14 @@ function AdminPage() {
                 <Button type="submit" className="w-full" disabled={authLoading}>
                   {authLoading ? "Verifying…" : "Verify & Login"}
                 </Button>
+                <button
+                  type="button"
+                  onClick={resendOtp}
+                  disabled={authLoading || resendLoading}
+                  className="w-full text-xs text-muted-foreground hover:text-foreground"
+                >
+                  {resendLoading ? "Resending…" : "Resend OTP"}
+                </button>
                 <button type="button" onClick={() => setOtpStep("request")} className="w-full text-xs text-muted-foreground hover:text-foreground">
                   Use a different email
                 </button>
@@ -341,10 +533,61 @@ function AdminPage() {
           </Button>
         </div>
 
-        <div>
-          <h1 className="text-3xl font-bold">Admin Dashboard</h1>
-          <p className="text-muted-foreground">Total votes cast: <span className="font-semibold text-foreground">{totalVotes}</span></p>
+        <div className="flex items-start justify-between gap-4 flex-wrap">
+          <div>
+            <h1 className="text-3xl font-bold">Admin Dashboard</h1>
+            <p className="text-muted-foreground">Total votes cast: <span className="font-semibold text-foreground">{totalVotes}</span></p>
+          </div>
+          <button
+            onClick={() => setChangePassMode(!changePassMode)}
+            className="text-xs px-3 py-1 rounded border border-border text-muted-foreground hover:text-foreground hover:border-foreground transition"
+          >
+            {changePassMode ? "Cancel" : "Change Password"}
+          </button>
         </div>
+
+        {changePassMode && (
+          <Card className="p-6 bg-gradient-card shadow-elegant space-y-4 border-primary/50">
+            <h2 className="text-lg font-bold">Change Password</h2>
+            <form onSubmit={handleChangePassword} className="space-y-4">
+              <div className="space-y-2">
+                <Label>New Password</Label>
+                <Input
+                  type="password"
+                  required
+                  minLength={6}
+                  value={newPass}
+                  onChange={(e) => setNewPass(e.target.value)}
+                  placeholder="Enter new password"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Confirm New Password</Label>
+                <Input
+                  type="password"
+                  required
+                  minLength={6}
+                  value={confirmPass}
+                  onChange={(e) => setConfirmPass(e.target.value)}
+                  placeholder="Confirm new password"
+                />
+              </div>
+              <div className="flex gap-2">
+                <Button type="submit" disabled={changePassLoading}>
+                  {changePassLoading ? "Updating…" : "Update Password"}
+                </Button>
+                <Button type="button" variant="outline" onClick={() => {
+                  setChangePassMode(false);
+                  setCurrentPass("");
+                  setNewPass("");
+                  setConfirmPass("");
+                }}>
+                  Cancel
+                </Button>
+              </div>
+            </form>
+          </Card>
+        )}
 
         {(() => {
           const st = votingStatus(settings);
